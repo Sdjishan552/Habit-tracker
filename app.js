@@ -233,7 +233,19 @@ function render() {
         }
         playAlertSound(slotKey);
     }
-
+// Show notification for each active event (only once)
+    activeEvents.forEach(event => {
+      const log = getLog();
+      const entry = log.find(e => e.name === event.name);
+      if (!entry) {  // Only notify if not started yet
+        const slotKey = `${todayKey()}_${event.name}`;
+        if (!localStorage.getItem("notified_" + slotKey)) {
+          notify("Active Event", event.name);
+          localStorage.setItem("notified_" + slotKey, "yes");
+          playAlertSound(slotKey);
+        }
+      }
+    });
     // ✅ FIX 3: Render event cards ONLY ONCE (removed duplicate code)
     activeEvents.forEach(event => {
       const entry = log.find(e => e.name === event.name);
@@ -290,13 +302,6 @@ function startMainEvent(name, start, phase, severity) {
     render();
     return;
   }
-
-  const slotKey = `${todayKey()}_${name}`;
-  if (!localStorage.getItem("notified_" + slotKey)) {
-    notify("Event Started", name);
-    localStorage.setItem("notified_" + slotKey, "yes");
-  }
-  playAlertSound(slotKey);
 
   log.push({
     name,
@@ -618,4 +623,5 @@ function getTotalUniqueScheduledMinutes(tt) {
   total += currentEnd - currentStart;
 
   return total;
+
 }
