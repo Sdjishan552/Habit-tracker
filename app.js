@@ -38,9 +38,8 @@ let soundPlayedForSlot = null;
 function playAlertSound(slotKey) {
   if (soundPlayedForSlot === slotKey) return;
 
-  const audio = new Audio(
-    "https://actions.google.com/sounds/v1/alarms/beep_short.ogg"
-  );
+  // ✅ OFFLINE SOUND - No internet required!
+  const audio = new Audio("data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBIAAAABAAEAQB8AAEAfAAABAAgAAABmYWN0BAAAAAAAAABkYXRhAAAAAA==");
 
   let count = 0;
   const playThreeTimes = () => {
@@ -170,7 +169,7 @@ function handleWaterClick() {
 }
 
 // ──────────────────────────────────────────────
-// ✅ FIXED RENDER FUNCTION - NO DUPLICATE EVENTS
+// ✅ FIXED RENDER FUNCTION - BOTH WATER & EVENT CARDS WORK TOGETHER
 // ──────────────────────────────────────────────
 function render() {
   try {
@@ -204,10 +203,10 @@ function render() {
       }
     }
 
-    // ✅ FIX 2: Water card with proper event listener attachment
+    // ✅ FIX 2: Water card - ALWAYS shows every 60 minutes
     if (waterInfo) {
         const waterCard = document.createElement("div");
-        waterCard.className = "card";
+        waterCard.className = "card water-card";
         waterCard.innerHTML = `
             <h2>💧 Drink Water (Hour ${waterInfo.slot + 1})</h2>
             <p>${formatNow()}</p>
@@ -219,34 +218,16 @@ function render() {
         `;
         container.appendChild(waterCard);
 
-        // ✅ CRITICAL: Attach event listener to the button
-        const waterBtn = waterCard.querySelector('.water-btn');
-        if (waterBtn) {
-          waterBtn.addEventListener('click', handleWaterClick);
-        }
-
-        // Add notification and sound
-        const slotKey = `${todayKey()}_daily_${waterInfo.slot}`;
+        // Add notification and sound (only once per slot)
+        const slotKey = `${todayKey()}_water_${waterInfo.slot}`;
         if (!localStorage.getItem("notified_" + slotKey)) {
             notify("💧 Drink Water", "Time for your hourly hydration!");
             localStorage.setItem("notified_" + slotKey, "yes");
+            playAlertSound(slotKey);
         }
-        playAlertSound(slotKey);
     }
-// Show notification for each active event (only once)
-    activeEvents.forEach(event => {
-      const log = getLog();
-      const entry = log.find(e => e.name === event.name);
-      if (!entry) {  // Only notify if not started yet
-        const slotKey = `${todayKey()}_${event.name}`;
-        if (!localStorage.getItem("notified_" + slotKey)) {
-          notify("Active Event", event.name);
-          localStorage.setItem("notified_" + slotKey, "yes");
-          playAlertSound(slotKey);
-        }
-      }
-    });
-    // ✅ FIX 3: Render event cards ONLY ONCE (removed duplicate code)
+
+    // ✅ FIX 3: Event cards - render ALL active events
     activeEvents.forEach(event => {
       const entry = log.find(e => e.name === event.name);
       const entryStatus = entry 
@@ -256,12 +237,13 @@ function render() {
         : '';
 
       const eventCard = document.createElement("div");
-      eventCard.className = "card active-event";
+      eventCard.className = "card event-card";
 
       eventCard.innerHTML = `
         <h2>${event.name || "Unnamed Event"}</h2>
         <p>${formatNow()}</p>
-<p>${minutesToTime(toMinutes(event.start))} – ${minutesToTime(toMinutes(event.end))}</p>        <p>Severity: ${event.severity || 3}</p>
+        <p>${minutesToTime(toMinutes(event.start))} – ${minutesToTime(toMinutes(event.end))}</p>
+        <p>Severity: ${event.severity || 3}</p>
         ${entryStatus ? `<p>${entryStatus}</p>` : ''}
         ${!entry ? `
           <button class="start-btn" 
@@ -272,24 +254,46 @@ function render() {
             ▶ Start Event
           </button>
         ` : entry.score === null ? `
-<p class="status">In Progress – Finish before ${minutesToTime(toMinutes(event.end))}</p>        ` : ''}
+          <p class="status">In Progress – Finish before ${minutesToTime(toMinutes(event.end))}</p>
+        ` : ''}
       `;
 
       container.appendChild(eventCard);
 
-      // ✅ Attach event listener to start button
-      const startBtn = eventCard.querySelector('.start-btn');
-      if (startBtn) {
-        startBtn.addEventListener('click', handleStartClick);
+      // Notify for new events (only once)
+      if (!entry) {
+        const eventKey = `${todayKey()}_event_${event.name}`;
+        if (!localStorage.getItem("notified_" + eventKey)) {
+          notify("Active Event", event.name);
+          localStorage.setItem("notified_" + eventKey, "yes");
+          playAlertSound(eventKey);
+        }
       }
     });
 
+    // ✅ CRITICAL FIX: Attach ALL event listeners AFTER all cards are created
+    // This ensures buttons work even after water card is clicked
+    attachAllEventListeners();
+
     // Debug log
-    console.log("Active events rendered:", activeEvents.length, activeEvents);
+    console.log("Rendered - Water:", waterInfo ? "YES" : "NO", "| Events:", activeEvents.length);
 
   } catch (err) {
     console.error("Error in render():", err);
   }
+}
+
+// ✅ NEW FUNCTION: Attach event listeners to ALL buttons
+function attachAllEventListeners() {
+  // Attach water button listeners
+  document.querySelectorAll('.water-btn').forEach(btn => {
+    btn.addEventListener('click', handleWaterClick);
+  });
+
+  // Attach event start button listeners
+  document.querySelectorAll('.start-btn').forEach(btn => {
+    btn.addEventListener('click', handleStartClick);
+  });
 }
 
 /* ========= START MAIN EVENT ========= */
@@ -302,6 +306,13 @@ function startMainEvent(name, start, phase, severity) {
     render();
     return;
   }
+
+  const slotKey = `${todayKey()}_${name}`;
+  if (!localStorage.getItem("notified_" + slotKey)) {
+    notify("Event Started", name);
+    localStorage.setItem("notified_" + slotKey, "yes");
+  }
+  playAlertSound(slotKey);
 
   log.push({
     name,
@@ -623,5 +634,4 @@ function getTotalUniqueScheduledMinutes(tt) {
   total += currentEnd - currentStart;
 
   return total;
-
 }
